@@ -1,22 +1,28 @@
-from sklearn import ensemble
+from sklearn import ensemble, linear_model, cross_validation, svm, naive_bayes, neighbors, tree
 import pandas as pd
+import numpy as np
 import copy
 import constants
-from sklearn import cross_validation
 
-class AbstractRun(object): #TODO: Drop abstract class, make IO a separate class which is composed
+def get_training_vectors():
+    training_filename = constants.training_data_csv
+    file_contents = pd.read_csv(training_filename, index_col=constants.ID_COLUMN)
+    feature_columns, target_column = file_contents.columns[:-1], file_contents.columns[-1]
+    return file_contents[feature_columns], file_contents[target_column]
+
+def get_testing_vectors():
+    testing_filename = constants.testing_data_csv
+    file_contents = pd.read_csv(testing_filename, index_col=constants.ID_COLUMN)
+    feature_columns= file_contents.columns
+    return file_contents[feature_columns]
+
+class AbstractRun(object): #TODO: Make stateless, model is sent into single exposed run() operation
     def __init__(self, model):
         self.model = model
 
-    def _read_training_data_vectorized(self, training_filename):
-        file_contents = pd.read_csv(training_filename, index_col=constants.ID_COLUMN)
-        feature_columns, target_column = file_contents.columns[:-1], file_contents.columns[-1]
-        return file_contents[feature_columns], file_contents[target_column]
-
 class CrossValidationRun(AbstractRun):
     def run_cross_validation(self):
-        training_filename = constants.training_data_csv
-        training_input, training_output = self._read_training_data_vectorized(training_filename)
+        training_input, training_output = get_training_vectors()
         cv_train_in, cv_test_in, cv_train_out, cv_test_out = cross_validation.train_test_split(training_input, training_output, test_size=0.7, random_state=0)
         self.model.fit(cv_train_in, cv_train_out)
         predictions = self.model.predict(cv_test_in)
@@ -34,23 +40,16 @@ class CrossValidationRun(AbstractRun):
 
 class CompetitionRun(AbstractRun):
     def train(self):
-        training_filename = constants.training_data_csv
-        training_input, training_output = self._read_training_data_vectorized(training_filename)
+        training_input, training_output = get_training_vectors()
         self._fit_model(training_input, training_output)
 
     def _fit_model(self, training_input, training_output):
         self.model.fit(training_input, training_output)
 
     def test(self):
-        testing_filename = constants.testing_data_csv
-        testing_input = self._read_testing_data_vectorized(testing_filename)
+        testing_input = get_testing_vectors()
         predicted_output = self._predict_model(testing_input)
         self._write_output_to_file(testing_input.index, predicted_output)
-
-    def _read_testing_data_vectorized(self, testing_filename):
-        file_contents = pd.read_csv(testing_filename, index_col=constants.ID_COLUMN)
-        feature_columns= file_contents.columns
-        return file_contents[feature_columns]
 
     def _predict_model(self, testing_input):
         return self.model.predict(testing_input)
@@ -68,9 +67,16 @@ class CompetitionRun(AbstractRun):
         return ['0.0' if c != predicted_class else '1.0' for c in classes]
 
 if __name__ == '__main__':
-    model = ensemble.RandomForestClassifier(n_estimators=100)
-    cv = CrossValidationRun(model)
-    cv.run_cross_validation()
-    # run = CompetitionRun(model)
-    # run.train()
-    # run.test()
+    # model = ensemble.RandomForestClassifier(n_estimators=1000)
+    # model = ensemble.GradientBoostingClassifier() #??? Submission
+    # model = svm.SVC()
+    # model = linear_model.LogisticRegression()
+    # model = linear_model.RidgeClassifier()
+    model = linear_model.SGDClassifier(penalty='l1')
+    # model = neighbors.KNeighborsClassifier(weights='distance')
+
+    # cv = CrossValidationRun(model)
+    # cv.run_cross_validation()
+    run = CompetitionRun(model)
+    run.train()
+    run.test()
